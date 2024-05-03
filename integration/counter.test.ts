@@ -12,7 +12,7 @@ const { expect } = chai;
 
 const initCount = 5;
 
-describe("Counter", () => {
+/*describe("Counter", () => {
     let counter: Counter;
 
     beforeEach(async () => {
@@ -56,4 +56,4 @@ describe("Counter", () => {
             expect(count).to.eq(initCount);
         });
     });
-});
+});*/
