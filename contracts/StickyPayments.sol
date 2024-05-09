@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.17;
 
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+
 /*interface ITimelock {
     function setTimelock(...) external;
 }
@@ -13,7 +16,7 @@ interface Owned {
     ...
 }*/
 
-contract StickyPayments /*is ITimelock, IMultisig*/{
+contract StickyPayments is ReentrancyGuard /*is ITimelock, -*/{
 
     // ----- Global Errors -----
     error NotOwnerError();
@@ -179,7 +182,7 @@ contract StickyPayments /*is ITimelock, IMultisig*/{
         string calldata _func,
         bytes calldata _data,
         uint256 _timestamp
-    ) external payable onlyOwner returns (bytes memory) {
+    ) external payable onlyOwner nonReentrant returns (bytes memory) {
         
         bytes32 txId = getTxId(_target, _value, _func, _data, _timestamp);
   
@@ -257,7 +260,12 @@ contract StickyPayments /*is ITimelock, IMultisig*/{
         }
     }
 
-    function executeMultisig(uint256 _txId) external txExists(_txId) notExecuted(_txId) {
+    function executeMultisig(uint256 _txId) 
+        external 
+        txExists(_txId) 
+        notExecuted(_txId) 
+        nonReentrant 
+    {
 
         if (_getApprovalCountMultisig(_txId) < required) {
             revert NotEnoughApprovalsError(_txId);
