@@ -42,18 +42,39 @@ interface IMultisig {
     function revokeMultisig(uint256 _txId) external;
 }
 
+interface IStreaming {
+    function queueStreaming(
+        address _target,
+        uint256 _value,
+        string calldata _func,
+        bytes calldata _data,
+        uint256 _timestamp
+    ) external;
+
+    function executeStreaming(
+        address _target,
+        uint256 _value,
+        string calldata _func,
+        bytes calldata _data,
+        uint256 _timestamp
+    ) external payable returns (bytes memory);
+
+    function cancelStreaming(bytes32 _txId) external;
+}
+
 interface Owned {
     function isOwner(address account) external view returns (bool);
 }
 
-
-contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
+contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Owned{
 
     // ----- Global Errors -----
+
     error NotOwnerError();
     error TxFailedError();
 
-    // ----- Timelock Errors -----
+    // ----- Timelock & Streaming Errors -----
+
     error AlreadyQueuedError(bytes32 txId);
     error NotQueuedError(bytes32 txId);
     error TimestampNotInRangeError(uint256 blockTimestamp, uint256 timestamp);
@@ -61,6 +82,7 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
     error TimestampExpiredError(uint256 blockTimestamp, uint256 expiresAt);
 
     // ----- Multisig Errors -----
+
     error TxNotExisting(uint256 txId);
     error AlreadyApprovedError(uint256 txId);
     error AlreadyExecuted(uint256 txId);
@@ -68,9 +90,11 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
     error NotApprovedError(uint256 txId);
 
     // ----- Global Events ----
+
     event Deposit(address indexed sender, uint256 amount);
 
     // ----- Timelock Events -----
+
     event QueueTimelock(
         bytes32 indexed txId, 
         address indexed target, 
@@ -90,22 +114,46 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
     event CancelTimelock(bytes32 indexed txId);
 
     // ----- Multisig Events -----
+
     event SubmitMultisig(uint256 indexed txId);
     event ApproveMultisig(address indexed owner, uint256 indexed txId);
     event RevokeMultisig(address indexed owner, uint256 indexed txId);
     event ExecuteMultisig(uint256 indexed txId);
 
-    // ----- Global State Variables
+        // ----- Streaming Events -----
+
+    event QueueStreaming(
+        bytes32 indexed txId, 
+        address indexed target, 
+        uint256 value, 
+        string func, 
+        bytes data, 
+        uint256 timestamp
+    );
+    event ExecuteStreaming(
+        bytes32 indexed txId, 
+        address indexed target, 
+        uint256 value, 
+        string func, 
+        bytes data, 
+        uint256 timestamp
+    );
+    event CancelStreaming(bytes32 indexed txId);
+
+    // ----- Global State Variables -----
+
     address[] public owners;
     mapping(address => bool) public isOwner;
 
     // ----- Timelock State Variables -----
+
     uint256 public constant MIN_DELAY = 10;
     uint256 public constant MAX_DELAY = 1000;
     uint256 public constant GRACE_PERIOD = 1000;
     mapping(bytes32 => bool) public queuedTimelock;
 
     // ----- Multisig State Variables -----
+
     struct Transaction {
         address to;
         uint256 value;
@@ -118,7 +166,12 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
     Transaction[] public transactions;
     mapping(uint256 => mapping(address => bool)) public approved;
 
+    // ----- Streaming State Variables -----
+
+    mapping(bytes32 => bool) public queuedStreaming;
+
     // ----- Global Functions & Modifiers -----
+
     constructor(address[] memory _owners, uint256 _required) {
         
         require(_owners.length > 0, "owners required");
@@ -172,7 +225,6 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
         _;
     }
 
-    // ----- Timelock Functions -----
     function getTxId(
         address _target,
         uint256 _value,
@@ -184,6 +236,8 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
             abi.encode(_target, _value, _func, _data, _timestamp)
         );
     }
+
+    // ----- Timelock Functions -----
     
     function queueTimelock(
         address _target,
@@ -268,6 +322,7 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
     }
 
     // ---- Multisig Functions -----
+
     function submitMultisig(address _to, uint256 _value, bytes calldata _data) 
         external
         onlyOwner
@@ -333,5 +388,84 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
         }
         approved[_txId][msg.sender] = false;
         emit RevokeMultisig(msg.sender, _txId);
+    }
+
+    // ----- Streaming Functions -----
+
+    function queueStreaming(
+        address _target,
+        uint256 _value,
+        string calldata _func,
+        bytes calldata _data,
+        uint256 _timestamp
+    ) external onlyOwner {
+
+        bytes32 txId = getTxId(_target, _value, _func, _data, _timestamp);
+
+        if (queuedStreaming[txId]) {
+            revert AlreadyQueuedError(txId);
+        }
+
+        if (_timestamp <= block.timestamp) {
+            revert TimestampNotInRangeError(block.timestamp, _timestamp);
+        }
+
+        queuedStreaming[txId] = true;
+
+        emit QueueStreaming(txId, _target, _value, _func, _data, _timestamp);
+
+    }
+
+    function executeStreaming(
+        address _target,
+        uint256 _value,
+        string calldata _func,
+        bytes calldata _data,
+        uint256 _timestamp
+    ) external payable onlyOwner nonReentrant returns (bytes memory) {
+        
+        bytes32 txId = getTxId(_target, _value, _func, _data, _timestamp);
+  
+        if (!queuedStreaming[txId]) {
+            revert NotQueuedError(txId);
+        }
+
+        queuedStreaming[txId] = false;
+
+        bytes memory data;
+        if (bytes(_func).length > 0) {
+            data = abi.encodePacked(
+                bytes4(keccak256(bytes(_func))), _data
+            );
+        } else {
+            data = _data;
+        }
+
+        uint256 finalValue = _value;
+
+        if (block.timestamp < _timestamp) {
+            // Multiply by 1e18 to avoid precision loss
+            uint256 proportion = (block.timestamp * 1e18) / _timestamp;
+            // Divide by 1e18 to scale back down
+            finalValue = (_value * proportion) / 1e18;
+        }
+
+        (bool ok, bytes memory res) = _target.call{value: finalValue}(data);
+        if (!ok) {
+            revert TxFailedError();
+        }
+
+        emit ExecuteStreaming(txId, _target, _value, _func, _data, _timestamp);
+
+        return res;
+    }
+
+    function cancelStreaming(bytes32 _txId) external onlyOwner {
+        
+        if(!queuedStreaming[_txId]) {
+            revert NotQueuedError(_txId);
+        }
+        queuedStreaming[_txId] = false;
+        emit CancelStreaming(_txId);
     }
 }
