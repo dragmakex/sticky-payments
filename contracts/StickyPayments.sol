@@ -111,8 +111,8 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
         uint256 value;
         bytes data;
         bool executed;
-        bool isToken;
-        address tokenAddress;
+        //bool isToken;
+        //address tokenAddress;
     }
     uint256 public required;
     Transaction[] public transactions;
@@ -240,13 +240,13 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
             data = _data;
         }
 
-        if (transaction.isToken) {
+        /*if (transaction.isToken) {
             IERC20 token = IERC20(transaction.tokenAddress);
             require(token.transfer(transaction.to, transaction.value), "Token transfer failed");
         } else {
             (bool success, ) = transaction.to.call{value: transaction.value}(transaction.data);
             require(success, "Ether transfer failed");
-        }
+        }*/
 
         (bool ok, bytes memory res) = _target.call{value: _value}(data);
         if (!ok) {
