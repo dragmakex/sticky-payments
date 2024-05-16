@@ -2,21 +2,52 @@
 pragma solidity >=0.8.17;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+interface ITimelock {
+    function getTxId(
+        address _target,
+        uint256 _value,
+        string calldata _func,
+        bytes calldata _data,
+        uint256 _timestamp
+    ) external pure returns (bytes32);
 
-/*interface ITimelock {
-    function setTimelock(...) external;
+    function queueTimelock(
+        address _target,
+        uint256 _value,
+        string calldata _func,
+        bytes calldata _data,
+        uint256 _timestamp
+    ) external;
+
+    function executeTimelock(
+        address _target,
+        uint256 _value,
+        string calldata _func,
+        bytes calldata _data,
+        uint256 _timestamp
+    ) external payable returns (bytes memory);
+
+    function cancelTimelock(bytes32 _txId) external;
 }
 
 interface IMultisig {
-    function submitTransaction(...) external;
+    function submitMultisig(address _to, uint256 _value, bytes calldata _data) external;
+
+    function approveMultisig(uint256 _txId) external;
+
+    function executeMultisig(uint256 _txId) external;
+
+    function revokeMultisig(uint256 _txId) external;
 }
 
 interface Owned {
-    ...
-}*/
+    function isOwner(address account) external view returns (bool);
+}
 
-contract StickyPayments is ReentrancyGuard /*is ITimelock, -*/{
+
+contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, Owned{
 
     // ----- Global Errors -----
     error NotOwnerError();
@@ -80,6 +111,8 @@ contract StickyPayments is ReentrancyGuard /*is ITimelock, -*/{
         uint256 value;
         bytes data;
         bool executed;
+        bool isToken;
+        address tokenAddress;
     }
     uint256 public required;
     Transaction[] public transactions;
@@ -205,6 +238,14 @@ contract StickyPayments is ReentrancyGuard /*is ITimelock, -*/{
             );
         } else {
             data = _data;
+        }
+
+        if (transaction.isToken) {
+            IERC20 token = IERC20(transaction.tokenAddress);
+            require(token.transfer(transaction.to, transaction.value), "Token transfer failed");
+        } else {
+            (bool success, ) = transaction.to.call{value: transaction.value}(transaction.data);
+            require(success, "Ether transfer failed");
         }
 
         (bool ok, bytes memory res) = _target.call{value: _value}(data);
