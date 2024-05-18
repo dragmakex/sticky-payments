@@ -139,23 +139,6 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
     );
     event CancelStreaming(bytes32 indexed txId);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-
     // ----- Global State Variables -----
 
     address[] public owners;
@@ -192,7 +175,7 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
         
         require(_owners.length > 0, "owners required");
         require(
-            _required > 0 && _required <= owners.length,
+            _required > 0 && _required <= _owners.length,
             "invalid number of owners"
         );
 
