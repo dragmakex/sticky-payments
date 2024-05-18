@@ -2,7 +2,6 @@
 pragma solidity >=0.8.17;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface ITimelock {
     function getTxId(
@@ -66,7 +65,7 @@ interface Owned {
     function isOwner(address account) external view returns (bool);
 }
 
-contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Owned{
+contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Owned {
 
     // ----- Global Errors -----
 
@@ -120,7 +119,7 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
     event RevokeMultisig(address indexed owner, uint256 indexed txId);
     event ExecuteMultisig(uint256 indexed txId);
 
-        // ----- Streaming Events -----
+    // ----- Streaming Events -----
 
     event QueueStreaming(
         bytes32 indexed txId, 
@@ -140,10 +139,35 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
     );
     event CancelStreaming(bytes32 indexed txId);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
     // ----- Global State Variables -----
 
     address[] public owners;
     mapping(address => bool) public isOwner;
+
+
+    struct Transaction {
+        address to;
+        uint256 value;
+        bytes data;
+        bool executed;
+    }
 
     // ----- Timelock State Variables -----
 
@@ -154,16 +178,8 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
 
     // ----- Multisig State Variables -----
 
-    struct Transaction {
-        address to;
-        uint256 value;
-        bytes data;
-        bool executed;
-        //bool isToken;
-        //address tokenAddress;
-    }
     uint256 public required;
-    Transaction[] public transactions;
+    Transaction[] public transactionsMultisig;
     mapping(uint256 => mapping(address => bool)) public approved;
 
     // ----- Streaming State Variables -----
@@ -205,7 +221,7 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
     }
 
     modifier txExists (uint256 _txId) {
-        if (_txId >= transactions.length) {
+        if (_txId >= transactionsMultisig.length) {
             revert TxNotExisting(_txId);
         }
         _;
@@ -219,7 +235,7 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
     }
 
     modifier notExecuted(uint256 _txId) {
-        if (transactions[_txId].executed) {
+        if (transactionsMultisig[_txId].executed) {
             revert AlreadyExecuted(_txId);
         }
         _;
@@ -294,14 +310,6 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
             data = _data;
         }
 
-        /*if (transaction.isToken) {
-            IERC20 token = IERC20(transaction.tokenAddress);
-            require(token.transfer(transaction.to, transaction.value), "Token transfer failed");
-        } else {
-            (bool success, ) = transaction.to.call{value: transaction.value}(transaction.data);
-            require(success, "Ether transfer failed");
-        }*/
-
         (bool ok, bytes memory res) = _target.call{value: _value}(data);
         if (!ok) {
             revert TxFailedError();
@@ -327,14 +335,14 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
         external
         onlyOwner
     {
-        transactions.push(Transaction({
+        transactionsMultisig.push(Transaction({
             to: _to,
             value: _value,
             data: _data,
             executed: false
         }));
         
-        emit SubmitMultisig(transactions.length - 1);
+        emit SubmitMultisig(transactionsMultisig.length - 1);
     }
 
     function approveMultisig(uint256 _txId) 
@@ -366,7 +374,7 @@ contract StickyPayments is ReentrancyGuard, ITimelock, IMultisig, IStreaming, Ow
         if (_getApprovalCountMultisig(_txId) < required) {
             revert NotEnoughApprovalsError(_txId);
         }
-        Transaction storage transaction = transactions[_txId];
+        Transaction storage transaction = transactionsMultisig[_txId];
 
         transaction.executed = true;
 
