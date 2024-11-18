@@ -1,4 +1,6 @@
-# [Solidity Template](#solidity-template)
+# Sticky Payments
+
+## [Solidity Template](#solidity-template)
 
 [![Unit Tests](https://github.com/mattstam/solidity-template/actions/workflows/unit-test.yaml/badge.svg)](https://github.com/mattstam/solidity-template/actions/workflows/unit-test.yaml)
 [![Integration Tests](https://github.com/mattstam/solidity-template/actions/workflows/integration-test.yaml/badge.svg)](https://github.com/mattstam/solidity-template/actions/workflows/integration-test.yaml)
